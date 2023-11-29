@@ -1,0 +1,237 @@
+[6:41 p. m., 29/11/2023] Libia: #include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <DHT.h>
+#include <string.h>
+
+//const char * WIFI_SSID = "TIGO-FLIA.GARECA";
+const char * WIFI_SSID =  "SS_SM-G955F_5872";
+//const char * WIFI_PASS = "wiwi291116";
+const char * WIFI_PASS = "44227755";
+const char * MQTT_BROKER = "a2mepgvj0v4l4v-ats.iot.us-east-1.amazonaws.com";
+const int MQTT_BROKER_PORT = 8883;
+
+const char * MQTT_CLIENT_ID = "Smart_flowerpot";
+const char * SUBSCRIBE_TOPIC = "Smart_flowerpot/sub";
+const char * PUBLISH_TOPIC = "Smart_flowerpot/pub";
+const char * PUBLISH_TOPIC_UPDATE = "Smart_flowerpot/update";
+
+//const char * UPDATE_ACCEPTED_TOPIC = "$aws/things/Smart_flowerpot/shadow/update/accepted";
+//const char * UPDATE_TOPIC = "$aws/things/Smart_flowe…
+[6:41 p. m., 29/11/2023] Libia: const Alexa = require('ask-sdk-core');
+const AWS = require('aws-sdk');
+const IotData = new AWS.IotData({endpoint: 'a2mepgvj0v4l4v-ats.iot.us-east-1.amazonaws.com'});
+
+const TurnOnParams = {
+    topic: '$aws/things/Smart_flowerpot/shadow/update',
+    payload: '{"state": {"desired": {"regar": "on"}}}',
+    qos: 0
+};
+
+const TurnOffParams = {
+    topic: '$aws/things/Smart_flowerpot/shadow/update',
+    payload: '{"state": {"desired": {"regar": "off"}}}',
+    qos: 0
+};
+
+const ShadowParams = {
+    thingName: 'Smart_flowerpot',
+};
+
+function getShadowPromise(params) {
+    return new Promise((resolve, reject) => {
+        IotData.getThingShadow(params, (err, data) => {
+            if (err) {
+                console.log(err, err.stack);
+                reject(Failed to get thing shadow ${err.errorMessage});
+            } else {
+                resolve(JSON.parse(data.payload));
+            }
+        });
+    });
+}
+
+const LaunchRequestHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'LaunchRequest';
+    },
+    handle(handlerInput) {
+        const speakOutput = 'Bienvenido al control de tu maceta inteligente';
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+
+const QueryIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'QueryIntent';
+    },
+    async handle(handlerInput) {
+        var regado = 'unknown';
+        await getShadowPromise(ShadowParams)
+          .then((result) => regado = result.state.reported.regar);
+        console.log(regado);
+
+        var speakOutput = 'Error';
+        if (regado == 'on') {
+            speakOutput = 'Mini bomba de agua encendida';
+        } else if (regado == 'off') {
+            speakOutput = 'Mini bomba de agua apagada';
+        } else {
+            speakOutput = 'No se pudo consultar el estado del led interno, inténtelo más tarde';
+        }
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const TurnOnIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'TurnOnIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        IotData.updateThingShadow(TurnOnParams, function(err, data) {
+            if (err) console.log(err);
+        });
+
+        speakOutput = 'Encendiendo';
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const TurnOffIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'TurnOffIntent';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        IotData.updateThingShadow(TurnOffParams, function(err, data) {
+            if (err) console.log(err);
+        });
+
+        speakOutput = 'Apagando';
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+const HelpIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.HelpIntent';
+    },
+    handle(handlerInput) {
+        const speakOutput = 'Tienes las opciones de: humedad de la planta, luz de la planta, temperatura de la planta, regar planta, detener riego';
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+const CancelAndStopIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && (Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.CancelIntent'
+                || Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.StopIntent');
+    },
+    handle(handlerInput) {
+        const speakOutput = 'Adios!';
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .getResponse();
+    }
+};
+
+const FallbackIntentHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'AMAZON.FallbackIntent';
+    },
+    handle(handlerInput) {
+        const speakOutput = 'Intenta de nuevo.';
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+const SessionEndedRequestHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'SessionEndedRequest';
+    },
+    handle(handlerInput) {
+        console.log(~~~~ Session ended: ${JSON.stringify(handlerInput.requestEnvelope)});
+        // Any cleanup logic goes here.
+        return handlerInput.responseBuilder.getResponse(); // notice we send an empty response
+    }
+};
+
+const RiegoHandler = {
+    canHandle(handlerInput) {
+        return Alexa.getRequestType(handlerInput.requestEnvelope) === 'IntentRequest'
+            && Alexa.getIntentName(handlerInput.requestEnvelope) === 'Riego';
+    },
+    handle(handlerInput) {
+        var speakOutput = 'Error';
+        IotData.updateThingShadow(TurnOnParams, function(err, data) {
+            if (err) console.log(err);
+        });
+
+        speakOutput = 'Regando la plantita';
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+  }
+};
+
+
+
+const ErrorHandler = {
+    canHandle() {
+        return true;
+    },
+    handle(handlerInput, error) {
+        const speakOutput = 'Hubo un error. Intenta de nuevo.';
+        console.log(~~~~ Error handled: ${JSON.stringify(error)});
+
+        return handlerInput.responseBuilder
+            .speak(speakOutput)
+            .reprompt(speakOutput)
+            .getResponse();
+    }
+};
+
+exports.handler = Alexa.SkillBuilders.custom()
+    .addRequestHandlers(LaunchRequestHandler,
+                        QueryIntentHandler,
+                        TurnOnIntentHandler,
+                        TurnOffIntentHandler,
+                        HelpIntentHandler,
+                        CancelAndStopIntentHandler,
+                        FallbackIntentHandler,
+                        RiegoHandler,
+                        SessionEndedRequestHandler)
+    .addErrorHandlers(ErrorHandler)
+    .lambda();
